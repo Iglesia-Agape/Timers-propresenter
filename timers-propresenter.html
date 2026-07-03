@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0420">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Timers ProPresenter</title>
+<style>
+  :root{
+    --bg1:#0b0420;
+    --bg2:#1a0a3d;
+    --accent:#ff2e8f;
+    --accent2:#00e5ff;
+    --gold:#ffd24a;
+    --panel:rgba(255,255,255,0.04);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  html,body{
+    margin:0;padding:0;min-height:100%;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(255,46,143,0.25), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(0,229,255,0.2), transparent 40%),
+      linear-gradient(160deg, var(--bg1), var(--bg2));
+    background-attachment:fixed;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color:#fff;
+    overflow-x:hidden;
+  }
+  body{
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .topbar{
+    text-align:center;
+    padding:calc(18px + env(safe-area-inset-top)) 10px 10px;
+  }
+  .topbar h1{
+    margin:0;
+    font-size:clamp(20px,4vw,34px);
+    letter-spacing:3px;
+    text-transform:uppercase;
+    background:linear-gradient(90deg,var(--accent),var(--gold),var(--accent2));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+    filter:drop-shadow(0 0 18px rgba(255,46,143,0.35));
+  }
+  .status{
+    text-align:center;
+    font-size:13px;
+    color:#9aa0c0;
+    margin-bottom:10px;
+    min-height:18px;
+  }
+  .status.error{color:#ff6b6b;}
+  .status.ok{color:#5dffb0;}
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+    gap:clamp(16px,3vw,28px);
+    padding:20px clamp(14px,5vw,60px) 60px;
+    max-width:1400px;
+    margin:0 auto;
+  }
+
+  .card{
+    position:relative;
+    border-radius:24px;
+    padding:clamp(20px,4vw,28px) clamp(14px,3vw,20px) clamp(24px,5vw,34px);
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    text-align:center;
+    overflow:hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+    transition: transform .25s ease;
+  }
+  @media (hover:hover){
+    .card:hover{ transform: translateY(-4px); }
+  }
+
+  .card::before{
+    content:"";
+    position:absolute;
+    inset:-2px;
+    border-radius:26px;
+    padding:2px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity:.55;
+    pointer-events:none;
+  }
+  .card.alabanza::before{ background:linear-gradient(135deg,#ff2e8f,#ffd24a); }
+  .card.predica::before{ background:linear-gradient(135deg,#00e5ff,#7b5bff); }
+
+  .label{
+    font-size:clamp(13px,2.4vw,20px);
+    letter-spacing:clamp(2px,1vw,5px);
+    font-weight:700;
+    text-transform:uppercase;
+    color:#cfd3f5;
+    margin-bottom:clamp(10px,2.5vw,18px);
+    white-space:nowrap;
+  }
+
+  .time{
+    font-size:clamp(48px,15vw,120px);
+    font-weight:800;
+    font-variant-numeric: tabular-nums;
+    line-height:1;
+    letter-spacing:clamp(0px,0.4vw,2px);
+    margin:6px 0;
+    white-space:nowrap;
+  }
+  .alabanza .time{
+    color:#ffe7f3;
+    text-shadow: 0 0 12px rgba(255,46,143,0.8), 0 0 40px rgba(255,46,143,0.45);
+  }
+  .predica .time{
+    color:#e6fbff;
+    text-shadow: 0 0 12px rgba(0,229,255,0.8), 0 0 40px rgba(0,229,255,0.45);
+  }
+
+  .time.negative{ color:#ff5050 !important; text-shadow:0 0 18px rgba(255,0,0,0.7) !important; }
+  .time.paused{ opacity:.45; }
+
+  .substate{
+    margin-top:10px;
+    font-size:13px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    color:#9aa0c0;
+  }
+  .dot{
+    display:inline-block;
+    width:9px;height:9px;
+    border-radius:50%;
+    margin-right:6px;
+    background:#666;
+    vertical-align:middle;
+  }
+  .dot.running{ background:#5dffb0; box-shadow:0 0 8px #5dffb0; animation:pulse 1.2s infinite; }
+  .dot.stopped{ background:#ff5050; box-shadow:0 0 8px #ff5050; }
+  @keyframes pulse{
+    0%,100%{ opacity:1; }
+    50%{ opacity:.4; }
+  }
+
+  .footer{
+    text-align:center;
+    color:#666e96;
+    font-size:12px;
+    padding:0 20px 30px;
+  }
+  .config{
+    text-align:center;
+    color:#666e96;
+    font-size:12px;
+  }
+  .config code{
+    background:rgba(255,255,255,0.06);
+    padding:2px 6px;
+    border-radius:6px;
+  }
+
+  /* Tablets / small laptops: keep cards side-by-side but tighten spacing */
+  @media (max-width:900px){
+    .grid{ gap:18px; padding:16px 18px 44px; }
+    html,body{ background-attachment:scroll; }
+  }
+
+  /* Phones: stack cards, reclaim space */
+  @media (max-width:640px){
+    .topbar{ padding-top:calc(16px + env(safe-area-inset-top)); }
+    .topbar h1{ letter-spacing:2px; }
+    .grid{ grid-template-columns:1fr; gap:16px; padding:8px 14px 36px; }
+    .card{ border-radius:20px; }
+  }
+
+  /* Very small phones */
+  @media (max-width:360px){
+    .time{ font-size:clamp(42px,17vw,90px); }
+    .label{ letter-spacing:2px; }
+  }
+
+  /* Phones in landscape: two columns again, minimal vertical chrome */
+  @media (max-width:900px) and (max-height:480px) and (orientation:landscape){
+    .topbar{ padding:calc(8px + env(safe-area-inset-top)) 10px 4px; }
+    .topbar h1{ font-size:18px; }
+    .status{ margin-bottom:4px; font-size:11px; }
+    .grid{ grid-template-columns:1fr 1fr; gap:12px; padding:6px 12px 16px; }
+    .card{ padding:12px 10px 14px; }
+    .time{ font-size:clamp(28px,9vw,56px); margin:2px 0; }
+    .label{ margin-bottom:6px; }
+    .footer,.config{ display:none; }
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce){
+    .dot.running{ animation:none; }
+    .card{ transition:none; }
+  }
+
+  /* Large displays (monitors/TVs used for stage output) */
+  @media (min-width:1600px){
+    .time{ font-size:clamp(80px,9vw,160px); }
+  }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <h1>Timers en Vivo</h1>
+  </div>
+  <div class="status" id="globalStatus">Conectando con ProPresenter...</div>
+
+  <div class="grid">
+    <div class="card alabanza" id="card-alabanza">
+      <div class="label">Alabanza</div>
+      <div class="time" id="time-alabanza">--:--:--</div>
+      <div class="substate"><span class="dot" id="dot-alabanza"></span><span id="state-alabanza">Sin datos</span></div>
+    </div>
+
+    <div class="card predica" id="card-predica">
+      <div class="label">Prédica</div>
+      <div class="time" id="time-predica">--:--:--</div>
+      <div class="substate"><span class="dot" id="dot-predica"></span><span id="state-predica">Sin datos</span></div>
+    </div>
+  </div>
+
+  <div class="config">
+    Conectado a <code id="hostDisplay"></code> &middot; actualiza cada segundo
+  </div>
+  <div class="footer">ProPresenter Network API</div>
+
+<script>
+  // ====== CONFIGURACIÓN ======
+  const HOST = "192.168.50.167";
+  const PORT = "49212";
+  const TIMERS = [
+    { key: "alabanza", uuid: "1E3AEFDD-D4F8-4616-A52E-1285C91C6967" },
+    { key: "predica",  uuid: "E923087A-56DA-4CA9-AD4B-6ACAE0BDE4BE" }
+  ];
+  const BASE_URL = `http://${HOST}:${PORT}`;
+  // ===========================
+
+  document.getElementById("hostDisplay").textContent = `${HOST}:${PORT}`;
+
+  function normUuid(id){ return (id || "").replace(/-/g, "").toUpperCase(); }
+
+  // Formato exacto de ProPresenter: "time" es un string "HH:MM:SS" (o "MM:SS"),
+  // con un "-" al inicio cuando el timer está en overrun (tiempo negativo).
+  function applyTimerData(t, at){
+    const timeEl = document.getElementById(`time-${t.key}`);
+    const stateEl = document.getElementById(`state-${t.key}`);
+    const dotEl = document.getElementById(`dot-${t.key}`);
+
+    const raw = (at && typeof at.time === "string") ? at.time.trim() : null;
+    const isNegative = raw ? raw.startsWith("-") : false;
+    timeEl.textContent = raw || "--:--:--";
+    timeEl.classList.toggle("negative", isNegative);
+
+    const state = at && at.state ? String(at.state).toLowerCase() : null;
+    const running = state === "running" || state === "overrunning";
+    const stopped = state === "stopped";
+
+    timeEl.classList.toggle("paused", stopped);
+    dotEl.classList.remove("running","stopped");
+    dotEl.classList.add(running ? "running" : "stopped");
+
+    if (state === "overrunning") stateEl.textContent = "En sobretiempo";
+    else if (state === "running") stateEl.textContent = "En curso";
+    else if (state === "stopped") stateEl.textContent = "Detenido";
+    else stateEl.textContent = "Sin datos";
+  }
+
+  async function fetchAllTimers(){
+    const url = `${BASE_URL}/v1/timers/current`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json(); // Array de { id:{uuid,name}, time:"HH:MM:SS", state:"running"|"stopped"|"overrunning" }
+  }
+
+  async function tick(){
+    const statusEl = document.getElementById("globalStatus");
+    try{
+      const apiTimers = await fetchAllTimers();
+
+      TIMERS.forEach(t => {
+        const at = apiTimers.find(item => {
+          const uuid = item.id?.uuid || item.id;
+          return normUuid(uuid) === normUuid(t.uuid);
+        });
+        applyTimerData(t, at);
+        if (!at){
+          document.getElementById(`state-${t.key}`).textContent = "UUID no encontrado";
+        }
+      });
+
+      statusEl.textContent = "Conectado a ProPresenter";
+      statusEl.className = "status ok";
+    } catch(err){
+      statusEl.textContent = `No se pudo conectar a ${BASE_URL}. Verifica que ProPresenter esté abierto y la red API activada (Preferencias > Red).`;
+      statusEl.className = "status error";
+      TIMERS.forEach(t => {
+        document.getElementById(`state-${t.key}`).textContent = "Sin conexión";
+        const dotEl = document.getElementById(`dot-${t.key}`);
+        dotEl.classList.remove("running");
+        dotEl.classList.add("stopped");
+      });
+    }
+  }
+
+  tick();
+  setInterval(tick, 1000);
+</script>
+
+</body>
+</html>
