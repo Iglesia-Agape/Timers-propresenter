@@ -243,85 +243,109 @@
   <div class="footer">ProPresenter Network API</div>
 
 <script>
-  // ====== CONFIGURACIÓN ======
-  const HOST = "192.168.50.167";
-  const PORT = "49212";
-  const TIMERS = [
-    { key: "alabanza", uuid: "1E3AEFDD-D4F8-4616-A52E-1285C91C6967" },
-    { key: "predica",  uuid: "E923087A-56DA-4CA9-AD4B-6ACAE0BDE4BE" }
-  ];
-  const BASE_URL = `http://${HOST}:${PORT}`;
-  // ===========================
+// ====== CONFIGURACIÓN ======
+// URL de tu Firebase Realtime Database (sin barra al final)
+const DB_URL = "https://propresenter-viewer-default-rtdb.firebaseio.com";
 
-  document.getElementById("hostDisplay").textContent = `${HOST}:${PORT}`;
+const TIMERS = [
+  { key: "alabanza" },
+  { key: "predica" }
+];
 
-  function normUuid(id){ return (id || "").replace(/-/g, "").toUpperCase(); }
+// Si el relay no actualiza en este tiempo, se considera desconectado
+const STALE_MS = 6000;
+// ===========================
 
-  // Formato exacto de ProPresenter: "time" es un string "HH:MM:SS" (o "MM:SS"),
-  // con un "-" al inicio cuando el timer está en overrun (tiempo negativo).
-  function applyTimerData(t, at){
+document.getElementById("hostDisplay").textContent = "la nube (Firebase)";
+
+let lastUpdatedAt = null;
+let lastChangeLocal = Date.now();
+
+// Formato de ProPresenter: "time" es un string "HH:MM:SS" (o "MM:SS"),
+// con un "-" al inicio cuando el timer está en overrun (tiempo negativo).
+function applyTimerData(t, at){
+  const timeEl  = document.getElementById(`time-${t.key}`);
+  const stateEl = document.getElementById(`state-${t.key}`);
+  const dotEl   = document.getElementById(`dot-${t.key}`);
+
+  const raw = (at && typeof at.time === "string") ? at.time.trim() : null;
+  const isNegative = raw ? raw.startsWith("-") : false;
+
+  timeEl.textContent = raw || "--:--:--";
+  timeEl.classList.toggle("negative", isNegative);
+
+  const state = at && at.state ? String(at.state).toLowerCase() : null;
+  const running = state === "running" || state === "overrunning";
+  const stopped = state === "stopped";
+
+  timeEl.classList.toggle("paused", stopped);
+  dotEl.classList.remove("running","stopped");
+  dotEl.classList.add(running ? "running" : "stopped");
+
+  if (state === "overrunning") stateEl.textContent = "En sobretiempo";
+  else if (state === "running") stateEl.textContent = "En curso";
+  else if (state === "stopped") stateEl.textContent = "Detenido";
+  else stateEl.textContent = "Sin datos";
+}
+
+function setOffline(message, stateText){
+  const statusEl = document.getElementById("globalStatus");
+  statusEl.textContent = message;
+  statusEl.className = "status error";
+  TIMERS.forEach(t => {
     const timeEl = document.getElementById(`time-${t.key}`);
-    const stateEl = document.getElementById(`state-${t.key}`);
+    timeEl.textContent = "--:--:--";
+    timeEl.classList.remove("negative");
+    timeEl.classList.add("paused");
+    document.getElementById(`state-${t.key}`).textContent = stateText;
     const dotEl = document.getElementById(`dot-${t.key}`);
+    dotEl.classList.remove("running");
+    dotEl.classList.add("stopped");
+  });
+}
 
-    const raw = (at && typeof at.time === "string") ? at.time.trim() : null;
-    const isNegative = raw ? raw.startsWith("-") : false;
-    timeEl.textContent = raw || "--:--:--";
-    timeEl.classList.toggle("negative", isNegative);
-
-    const state = at && at.state ? String(at.state).toLowerCase() : null;
-    const running = state === "running" || state === "overrunning";
-    const stopped = state === "stopped";
-
-    timeEl.classList.toggle("paused", stopped);
-    dotEl.classList.remove("running","stopped");
-    dotEl.classList.add(running ? "running" : "stopped");
-
-    if (state === "overrunning") stateEl.textContent = "En sobretiempo";
-    else if (state === "running") stateEl.textContent = "En curso";
-    else if (state === "stopped") stateEl.textContent = "Detenido";
-    else stateEl.textContent = "Sin datos";
-  }
-
-  async function fetchAllTimers(){
-    const url = `${BASE_URL}/v1/timers/current`;
-    const res = await fetch(url, { cache: "no-store" });
+async function tick(){
+  const statusEl = document.getElementById("globalStatus");
+  try{
+    const res = await fetch(`${DB_URL}/timers.json`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json(); // Array de { id:{uuid,name}, time:"HH:MM:SS", state:"running"|"stopped"|"overrunning" }
-  }
+    const data = await res.json();
 
-  async function tick(){
-    const statusEl = document.getElementById("globalStatus");
-    try{
-      const apiTimers = await fetchAllTimers();
-
-      TIMERS.forEach(t => {
-        const at = apiTimers.find(item => {
-          const uuid = item.id?.uuid || item.id;
-          return normUuid(uuid) === normUuid(t.uuid);
-        });
-        applyTimerData(t, at);
-        if (!at){
-          document.getElementById(`state-${t.key}`).textContent = "UUID no encontrado";
-        }
-      });
-
-      statusEl.textContent = "Conectado a ProPresenter";
-      statusEl.className = "status ok";
-    } catch(err){
-      statusEl.textContent = `No se pudo conectar a ${BASE_URL}. Verifica que ProPresenter esté abierto y la red API activada (Preferencias > Red).`;
-      statusEl.className = "status error";
-      TIMERS.forEach(t => {
-        document.getElementById(`state-${t.key}`).textContent = "Sin conexión";
-        const dotEl = document.getElementById(`dot-${t.key}`);
-        dotEl.classList.remove("running");
-        dotEl.classList.add("stopped");
-      });
+    if (!data){
+      setOffline("Aún no hay datos. Verifica que el relay esté corriendo en la PC de ProPresenter.", "Sin datos");
+      return;
     }
-  }
 
-  tick();
-  setInterval(tick, 1000);
+    // Detecta si el relay sigue enviando datos (updatedAt debe cambiar cada segundo)
+    if (data.updatedAt !== lastUpdatedAt){
+      lastUpdatedAt = data.updatedAt;
+      lastChangeLocal = Date.now();
+    }
+    if (Date.now() - lastChangeLocal > STALE_MS){
+      setOffline("El relay dejó de enviar datos. Revisa la PC de ProPresenter.", "Sin conexión");
+      return;
+    }
+
+    if (data.pp === false){
+      setOffline("ProPresenter no responde. Verifica que esté abierto y la red API activada (Preferencias > Red).", "ProPresenter sin conexión");
+      return;
+    }
+
+    TIMERS.forEach(t => {
+      const at = data.timers ? data.timers[t.key] : null;
+      applyTimerData(t, at);
+      if (!at) document.getElementById(`state-${t.key}`).textContent = "UUID no encontrado";
+    });
+
+    statusEl.textContent = "Conectado a ProPresenter";
+    statusEl.className = "status ok";
+  } catch(err){
+    setOffline("No se pudo conectar a la base de datos. Revisa tu conexión a internet.", "Sin conexión");
+  }
+}
+
+tick();
+setInterval(tick, 1000);
 </script>
 
 </body>
